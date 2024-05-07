@@ -7,6 +7,7 @@ Prénom: Abel
 Matricule: 000569935
 
 Description :
+	Construction d'arbre de decion avec un fichier csv
 
 Fonctions :
 	class Node:
@@ -32,7 +33,12 @@ Fonctions :
 	def information_gain(mushrooms:list[Mushroom], attribute:str) -> float:
 	def build_decision_tree(mushrooms:list[Mushroom]) -> Node:
 
-	def print_tree(root:Node, level:int=0) -> None:
+	def display(root:Node, level:int=0) -> None:
+	def is_edible(root:Node, mushroom:Mushroom) -> bool:
+	def to_boolean_expression(root:Node, expression) -> list[tuple]:
+
+	def main(mushrooms) -> None:
+
 """
 
 
@@ -68,7 +74,10 @@ class Mushroom:
 		return self.edible
 
 	def add_attribute(self, name:str, value:str) -> None:
-		self.attributes[name] = value
+		if isinstance(value,str) and isinstance(name,str):
+			self.attributes[name] = value
+		else:
+			raise TypeError("Both value and name must be strings")
 
 	def get_attribute(self, name:str) -> str:
 		return self.attributes[name]
@@ -79,7 +88,10 @@ class Mushroom:
 
 def load_dataset(path:str) -> list[Mushroom]:
 	"""
-	Lis un fichier csv et separe les labels
+	Lis un fichier csv, separe les labels des autres caractéristiques
+		et crée un objet Mushroom pour chaque ligne du fichier.
+	:param path: Chemin du fichier csv
+	:return: list des champignons
 	"""
 	mushrooms = list()
 	with open(path, newline='') as csvfile:
@@ -97,6 +109,13 @@ def load_dataset(path:str) -> list[Mushroom]:
 
 def filter_mushrooms_by_value(mushrooms:list[Mushroom], attribute:str,
 															value:str) -> list[Mushroom]:
+	"""
+	Filtre les champignons par valeur
+	:param mushrooms: liste des champignons
+	:param attribute: attribut associe a la valeur
+	:param value: valeur recherchee
+	:return: list des champignons filtres
+	"""
 	filtred_mushrooms= list()
 	for m in mushrooms:
 		if value == m.get_attribute(attribute):
@@ -104,17 +123,30 @@ def filter_mushrooms_by_value(mushrooms:list[Mushroom], attribute:str,
 	return filtred_mushrooms
 
 def attribute_mapping(mushrooms:list[Mushroom]) -> dict[str,list[str]]:
-	attribute_map = dict()
-	hash = dict()
+	"""
+	Cree un dictionnaire qui a comme cle tous les attributs des champignons
+		et comme valeur toutes les valeur possible pour cet attribut
+	:param mushrooms: liste des champignons
+	:return: dictionnaire des valeur possible par attribut
+	"""
+	attribute_map = {label: list()
+									for label in mushrooms[0].get_attribute_dict().keys()}
+	# Optimisation en utilisant set a la place de list pour faire des recherches en O(1)
+	unique_values = {label: set()
+									for label in mushrooms[0].get_attribute_dict().keys()} 
 	for m in mushrooms:
 		for label, value in m.get_attribute_dict().items():
-			hash.setdefault(label, set())
-			if value not in hash[label]:
-				attribute_map.setdefault(label, list()).append(value)
-				hash.setdefault(label, set()).add(value)
+			if value not in unique_values[label]: # verifie si l'element n'a pas deja ete insere
+				attribute_map[label].append(value)
+				unique_values[label].add(value)
 	return attribute_map
 
 def edible_proportion(mushrooms:list[Mushroom]) -> float:
+	"""
+	Calcule la proportion de champignons comestible dans mushrooms
+	:param mushrooms: liste des champignons
+	:return: la proportion de champignons comestible
+	"""
 	res = 0.0
 	for m in mushrooms:
 		if m.is_edible():
@@ -124,6 +156,11 @@ def edible_proportion(mushrooms:list[Mushroom]) -> float:
 	return res
 
 def entropy(mushrooms:list[Mushroom]) -> float:
+	"""
+	Calcule l'entropie de mushrooms
+	:param mushrooms: liste des champignons
+	:return: l'entropie de mushrooms
+	"""
 	py = edible_proportion(mushrooms)
 	if py == 0 or py == 1:
 		res = 0
@@ -132,39 +169,46 @@ def entropy(mushrooms:list[Mushroom]) -> float:
 	return res
 
 def information_gain(mushrooms:list[Mushroom], attribute:str) -> float:
+	"""
+	Calcule le gain d'information d'un attribut par rapport aux champignons 
+	:param mushrooms: liste des champignons
+	:param attribute: l'attribut
+	:return: le gain d'information
+	"""
 	gain = 0
 	base_entropy = entropy(mushrooms) # H(C)
-
 	sublist_entropy_sum = 0						# SUM(v) Pa=v * H(Ca=v)
 	for value in ATTRIBUTES[attribute]:
-		sublist = filter_mushrooms_by_value(mushrooms, attribute, value) # Ca=v
-		value_proportion = (len(sublist)/len(mushrooms))								 # Pa=v
-		sublist_entropy = entropy(sublist)															 # H(Ca=v)
+		sublist = filter_mushrooms_by_value(mushrooms, attribute, value) # Ca=v Determiner le sous-ensemble
+		value_proportion = (len(sublist)/len(mushrooms))								 # Pa=v Calcule la proportion de champignon du sous-ensemble
+		sublist_entropy = entropy(sublist)															 # H(Ca=v) Calcule l'entropie du sous-ensemble
 		sublist_entropy_sum += value_proportion * sublist_entropy
-		#print("- ", value, ":", "\n    entropy :", sublist_entropy,
-		#		"\n    proportion :", value_proportion)
 	gain = base_entropy - sublist_entropy_sum # I(C|A)
-	#print("\nI(C|A) = " + str(base_entropy) + " - " + str(sublist_entropy_sum))
 	return gain
 
 def build_decision_tree(mushrooms:list[Mushroom]) -> Node:
+	"""
+	Construis l'arbre de decision:
+		- choisis l'attribut qui a le plus grand gain d'information
+		- cree le noeud associe a cet attribut
+		- pour chaque valeur de cet attribut construire le sous-arbre de cette valeur
+	:param mushrooms: liste des champignons
+	:return: la racine de l'arbre
+	"""
 	attribute_map = attribute_mapping(mushrooms)
 	best_division_attribute = None
 	best_gain = 0.0
-	for attribute in ATTRIBUTES:
-		#print("===========================================", attribute, "\n")
-		current_gain = information_gain(mushrooms, attribute)
-		if current_gain > best_gain:
-			best_gain = current_gain
-			best_division_attribute = attribute
-	#print(best_gain, best_division_attribute)
-	if best_division_attribute is not None:
+	if entropy(mushrooms) != 0.0: # Si l'entropie de mushrooms est nul il n'est pas necessaire de le diviser
+		for attribute in ATTRIBUTES:
+			current_gain = information_gain(mushrooms, attribute)
+			if current_gain > best_gain:
+				best_gain = current_gain
+				best_division_attribute = attribute
+	if best_division_attribute is not None: # si un attribut a un gain d'information non nul
 		root = Node(best_division_attribute)
 		for value in attribute_map[best_division_attribute]:
 			sublist = filter_mushrooms_by_value(mushrooms,
 																			 best_division_attribute, value)
-			#print("\n -- tree :")
-			#print_tree( root)
 			subtree = build_decision_tree(sublist)
 			root.add_edge(value, subtree)
 	else:
@@ -174,23 +218,64 @@ def build_decision_tree(mushrooms:list[Mushroom]) -> Node:
 			root = Node("No", is_leaf=True)
 	return root
 
-def print_tree(root:Node, level:int=0) -> None:
-		if root.is_leaf():
-			print("  " * (level+1) + root.criterion_)
-			return
-		print("  " * level + root.criterion_)
+def display(root:Node, level:int=0) -> None:
+	"""
+	Affiche l'arbre dans le terminale
+	:param root: racine de l'arbre a aficher
+	:param level: niveau indentation de l'affichage
+	"""
+	if root.is_leaf():
+		print("  " * (level-1) + "|       " + root.criterion_)
+	else:
 		for edge in root.edges_:
-			print("  " * (level+1) + edge.label_)
-			print_tree(edge.child_, level + 1)
+			print("  " * (level) + "|  " + root.criterion_ + " = " + edge.label_)
+			display(edge.child_, level + 1)
 
-MUSHROOMS = load_dataset("test.csv")
-ATTRIBUTES = attribute_mapping(MUSHROOMS)
 
-print(edible_proportion(MUSHROOMS))
-print(entropy(MUSHROOMS))
+def is_edible(root:Node, mushroom:Mushroom) -> bool:
+	"""
+	Cherche si le champignon donnee est comestible ou non
+	:param root: racine de l'arbre
+	:param mushroom: le champignon 
+	:return: si le champignon est comestible
+	"""
+	if root.is_leaf():
+		if root.criterion_ == "Yes":
+			return True
+		else:
+			return False
+	else:
+		value = mushroom.get_attribute(root.criterion_)
+		for edge in root.edges_:
+			if value == edge.label_:
+				return is_edible(edge.child_, mushroom)
 
-tree = build_decision_tree(MUSHROOMS)
-print_tree(tree, 1)
+def to_boolean_expression(root:Node, expression:list) -> list[tuple]:
+	"""
+	Convertie un arbre de decision en expression booleennes
+	:param root: racine de l'arbre
+	:param expression: l'ensemble qui represente les expression booleennes
+	:return: expression booleennes
+	"""
+	for edge in root.edges_:
+		if not edge.child_.is_leaf():
+			expression.append((root.criterion_, edge.label_))
+			expression.append(to_boolean_expression(edge.child_, []))
+		elif edge.child_.criterion_ == "Yes":
+			expression.append((root.criterion_, edge.label_))
+	return expression
+
+def main(mushrooms) -> None:
+	global ATTRIBUTES
+	ATTRIBUTES = attribute_mapping(mushrooms)
+	if not ATTRIBUTES:
+		raise ValueError("No data has been found in the csv file")
+	tree = build_decision_tree(mushrooms)
+	display(tree)
+
+MUSHROOMS = load_dataset("mushrooms.csv")
+main(MUSHROOMS)
+
 
 
 
