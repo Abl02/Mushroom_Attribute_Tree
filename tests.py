@@ -21,6 +21,12 @@ class TestMushroomDataLoading(unittest.TestCase):
         self.assertEqual(m3.get_attribute('cap-shape'), 'Bell')
         self.assertEqual(m3.get_attribute('odor'), 'Anise')
 
+    def test_no_attribute(self):
+        data = [Mushroom(True), Mushroom(True), Mushroom(False), Mushroom(True)]
+        with self.assertRaises(ValueError):
+            main(data)
+
+
 def make_mushroom(attributes):
     ret = Mushroom(None)
     for k, v in attributes.items():
@@ -29,7 +35,16 @@ def make_mushroom(attributes):
 
 class TestBuildTree(unittest.TestCase):
     def setUp(self):
-        self.test_tree_root = build_decision_tree(load_dataset('mushrooms.csv'))
+        self.data = load_dataset('mushrooms.csv')
+        self.test_tree_root = build_decision_tree(self.data)
+
+    def test_wrong_type(self):
+        with self.assertRaises(TypeError):
+            self.data[0].add_attribute('habitat', 0)
+            self.data[0].add_attribute(0, 'good')
+            self.data[1].add_attribute(True, 0.0)
+            self.data[0].add_attribute(None, None)
+            build_decision_tree(self.data)
 
     def test_tree_main_attribute(self):
         self.assertEqual(self.test_tree_root.criterion_, 'odor', "Le premier critère de division doit être 'odor'")
@@ -45,6 +60,16 @@ class TestBuildTree(unittest.TestCase):
         self.assertTrue(is_edible(root, make_mushroom({'odor': 'Almond'})))
         self.assertFalse(is_edible(root, make_mushroom({'odor': 'None', 'spore-print-color': 'Green'})))
 
+    def test_boolean_convertion(self):
+        expression = [('odor', 'Almond'), ('odor', 'Anise'), ('odor', 'None'),
+                     [('spore-print-color', 'Brown'), ('spore-print-color', 'Black'),
+                     ('spore-print-color', 'White'), [('habitat', 'Waste'), ('habitat', 'Leaves'),
+                     [('cap-color', 'Cinnamon'), ('cap-color', 'Brown')],
+                     ('habitat', 'Woods'), [('gill-size', 'Broad')],
+                     ('habitat', 'Grasses'), ('habitat', 'Paths')],
+                     ('spore-print-color', 'Chocolate'), ('spore-print-color', 'Orange'),
+                     ('spore-print-color', 'Yellow'), ('spore-print-color', 'Buff')]]
+        self.assertEqual(to_boolean_expression(self.test_tree_root, []), expression)
 
 if __name__ == '__main__':
     unittest.main()
